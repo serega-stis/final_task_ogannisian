@@ -1,78 +1,62 @@
-//SPDX-License-Identifier: MIT
-pragma solidity >=0.8.0 <0.9.0;
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
 
-// Useful for debugging. Remove when deploying to a live network.
-import "hardhat/console.sol";
-
-// Use openzeppelin to inherit battle-tested implementations (ERC20, ERC721, etc)
-// import "@openzeppelin/contracts/access/Ownable.sol";
-
-/**
- * A smart contract that allows changing a state variable of the contract and tracking the changes
- * It also allows the owner to withdraw the Ether in the contract
- * @author BuidlGuidl
- */
-contract YourContract {
-    // State Variables
-    address public immutable owner;
-    string public greeting = "Building Unstoppable Apps!!!";
-    bool public premium = false;
-    uint256 public totalCounter = 0;
-    mapping(address => uint) public userGreetingCounter;
-
-    // Events: a way to emit log statements from smart contract that can be listened to by external parties
-    event GreetingChange(address indexed greetingSetter, string newGreeting, bool premium, uint256 value);
-
-    // Constructor: Called once on contract deployment
-    // Check packages/hardhat/deploy/00_deploy_your_contract.ts
-    constructor(address _owner) {
-        owner = _owner;
+contract Voting {
+    struct Candidate {
+        uint id;
+        string name;
+        uint voteCount;
     }
 
-    // Modifier: used to define a set of rules that must be met before or after a function is executed
-    // Check the withdraw() function
-    modifier isOwner() {
-        // msg.sender: predefined variable that represents address of the account that called the current function
-        require(msg.sender == owner, "Not the Owner");
-        _;
+    mapping(uint => Candidate) public candidates;
+    mapping(address => bool) public voters;
+    uint public candidatesCount;
+    string public electionName;
+    bool public electionEnded;
+
+    event CandidateAdded(uint id, string name);
+    event Voted(uint candidateId);
+
+    constructor() {
+        electionName = 'Election';
+        electionEnded = false;
     }
 
-    /**
-     * Function that allows anyone to change the state variable "greeting" of the contract and increase the counters
-     *
-     * @param _newGreeting (string memory) - new greeting to save on the contract
-     */
-    function setGreeting(string memory _newGreeting) public payable {
-        // Print data to the hardhat chain console. Remove when deploying to a live network.
-        console.log("Setting new greeting '%s' from %s", _newGreeting, msg.sender);
+    function addCandidate(string memory _name) public {
+        require(!electionEnded, "Election has already ended.");
+        candidatesCount++;
+        candidates[candidatesCount] = Candidate(candidatesCount, _name, 0);
+        emit CandidateAdded(candidatesCount, _name);
+    }
 
-        // Change state variables
-        greeting = _newGreeting;
-        totalCounter += 1;
-        userGreetingCounter[msg.sender] += 1;
+    function vote(uint _candidateId) public {
+        require(!voters[msg.sender], "You have already voted.");
+        require(_candidateId > 0 && _candidateId <= candidatesCount, "Invalid candidate ID.");
 
-        // msg.value: built-in global variable that represents the amount of ether sent with the transaction
-        if (msg.value > 0) {
-            premium = true;
-        } else {
-            premium = false;
+        voters[msg.sender] = true;
+        candidates[_candidateId].voteCount++;
+        emit Voted(_candidateId);
+    }
+
+    function endElection() public {
+        electionEnded = true;
+    }
+
+    function getResults() public view returns (uint winningCandidateId) {
+        require(electionEnded, "Election is still ongoing.");
+        
+        uint winningVoteCount = 0;
+        for (uint i = 1; i <= candidatesCount; i++) {
+            if (candidates[i].voteCount > winningVoteCount) {
+                winningVoteCount = candidates[i].voteCount;
+                winningCandidateId = i;
+            }
         }
-
-        // emit: keyword used to trigger an event
-        emit GreetingChange(msg.sender, _newGreeting, msg.value > 0, msg.value);
     }
 
-    /**
-     * Function that allows the owner to withdraw all the Ether in the contract
-     * The function can only be called by the owner of the contract as defined by the isOwner modifier
-     */
-    function withdraw() public isOwner {
-        (bool success, ) = owner.call{ value: address(this).balance }("");
-        require(success, "Failed to send Ether");
+    function getCandidate(uint _candidateId) public view returns (string memory name, uint voteCount) {
+        require(_candidateId > 0 && _candidateId <= candidatesCount, "Invalid candidate ID.");
+        Candidate memory candidate = candidates[_candidateId];
+        return (candidate.name, candidate.voteCount);
     }
-
-    /**
-     * Function that allows the contract to receive ETH
-     */
-    receive() external payable {}
 }

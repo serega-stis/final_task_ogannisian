@@ -1,71 +1,129 @@
 "use client";
 
-import Link from "next/link";
-import type { NextPage } from "next";
-import { useAccount } from "wagmi";
-import { BugAntIcon, MagnifyingGlassIcon } from "@heroicons/react/24/outline";
-import { Address } from "~~/components/scaffold-eth";
+import React, { useState, useEffect } from 'react';
+import { ethers } from 'ethers';
+import { abi } from "../../hardhat/artifacts/contracts/YourContract.sol/Voting.json"; // Импортируйте ABI вашего контракта
+import './page.css';
 
-const Home: NextPage = () => {
-  const { address: connectedAddress } = useAccount();
+const VotingApp = () => {
+    const [provider, setProvider] = useState(null);
+    const [signer, setSigner] = useState(null);
+    const [contract, setContract] = useState(null);
+    const [candidates, setCandidates] = useState([]);
+    const [candidateName, setCandidateName] = useState('');
+    const [candidateId, setCandidateId] = useState('');
+    const [results, setResults] = useState('');
+    const [electionName, setElectionName] = useState('');
+    const [electionEnded, setElectionEnded] = useState(false);
 
-  return (
-    <>
-      <div className="flex items-center flex-col flex-grow pt-10">
-        <div className="px-5">
-          <h1 className="text-center">
-            <span className="block text-2xl mb-2">Welcome to</span>
-            <span className="block text-4xl font-bold">Scaffold-ETH 2</span>
-          </h1>
-          <div className="flex justify-center items-center space-x-2 flex-col sm:flex-row">
-            <p className="my-2 font-medium">Connected Address:</p>
-            <Address address={connectedAddress} />
-          </div>
-          <p className="text-center text-lg">
-            Get started by editing{" "}
-            <code className="italic bg-base-300 text-base font-bold max-w-full break-words break-all inline-block">
-              packages/nextjs/app/page.tsx
-            </code>
-          </p>
-          <p className="text-center text-lg">
-            Edit your smart contract{" "}
-            <code className="italic bg-base-300 text-base font-bold max-w-full break-words break-all inline-block">
-              YourContract.sol
-            </code>{" "}
-            in{" "}
-            <code className="italic bg-base-300 text-base font-bold max-w-full break-words break-all inline-block">
-              packages/hardhat/contracts
-            </code>
-          </p>
+    const contractAddress = '0x5FbDB2315678afecb367f032d93F642f64180aa3'; // Замените на адрес вашего контракта
+
+    useEffect(() => {
+        const init = async () => {
+            const provider = new ethers.providers.Web3Provider(window.ethereum);
+            await window.ethereum.request({ method: 'eth_requestAccounts' });
+            const signer = provider.getSigner();
+            const contract = new ethers.Contract(contractAddress, abi, signer);
+            console.log(contract)
+
+            setProvider(provider);
+            setSigner(signer);
+            setContract(contract);
+
+            const name = await contract.electionName();
+            setElectionName(name);
+            const ended = await contract.electionEnded();
+            setElectionEnded(ended);
+
+            await loadCandidates(contract);
+        };
+
+        init();
+    }, []);
+
+    const loadCandidates = async (contract) => {
+        const count = await contract.candidatesCount();
+        const candidatesList = [];
+        for (let i = 1; i <= count; i++) {
+            const candidate = await contract.getCandidate(i);
+            candidatesList.push({ id: i, name: candidate[0], voteCount: candidate[1].toNumber() });
+        }
+        setCandidates(candidatesList);
+    };
+
+    const addCandidate = async () => {
+        if (!candidateName) return;
+        await contract.addCandidate(candidateName);
+        alert('Candidate added!');
+        setCandidateName('');
+        await loadCandidates(contract);
+    };
+
+    const vote = async () => {
+        if (!candidateId) return;
+        await contract.vote(candidateId);
+        alert('Vote casted!');
+        setCandidateId('');
+    };
+
+    const endElection = async () => {
+        await contract.endElection();
+        alert('Election ended!');
+        setElectionEnded(true);
+    };
+
+    const getResults = async () => {
+        const winningCandidateId = await contract.getResults();
+        const winner = await contract.getCandidate(winningCandidateId);
+        setResults("Одержал победу: " + winner[0] + ", количество голосов: " + winner[1].toNumber());
+    };
+
+    return (
+        <div className="main">
+            <h2>Выборы</h2>
+            <h3>Добавить кандидата</h3>
+            <input
+                type="text"
+                value={candidateName}
+                onChange={(e) => setCandidateName(e.target.value)}
+                placeholder="Имя кандидата"
+            />
+            <button onClick={addCandidate}>Добавить кандидата</button>
+
+            <h3>Голосование за кандидата</h3>
+            <input
+                type="number"
+                value={candidateId}
+                onChange={(e) => setCandidateId(e.target.value)}
+                placeholder="Номер кандидата"
+            />
+            <button onClick={vote}>Отдать голос</button>
+
+            {!electionEnded && (
+                <>
+                    <h3>End Election</h3>
+                    <button onClick={endElection}>End Election</button>
+                </>
+            )}
+
+            <h3>Кандидаты</h3>
+            <ul>
+                {candidates.map((candidate) => (
+                    <li key={candidate.id}>
+                        {candidate.name}: {candidate.voteCount} votes
+                    </li>
+                ))}
+            </ul>
+
+            {electionEnded && (
+                <>
+                    <h3>Результаты</h3>
+                    <button onClick={getResults}>Получить результы</button>
+                    <p>{results}</p>
+                </>
+            )}
         </div>
-
-        <div className="flex-grow bg-base-300 w-full mt-16 px-8 py-12">
-          <div className="flex justify-center items-center gap-12 flex-col sm:flex-row">
-            <div className="flex flex-col bg-base-100 px-10 py-10 text-center items-center max-w-xs rounded-3xl">
-              <BugAntIcon className="h-8 w-8 fill-secondary" />
-              <p>
-                Tinker with your smart contract using the{" "}
-                <Link href="/debug" passHref className="link">
-                  Debug Contracts
-                </Link>{" "}
-                tab.
-              </p>
-            </div>
-            <div className="flex flex-col bg-base-100 px-10 py-10 text-center items-center max-w-xs rounded-3xl">
-              <MagnifyingGlassIcon className="h-8 w-8 fill-secondary" />
-              <p>
-                Explore your local transactions with the{" "}
-                <Link href="/blockexplorer" passHref className="link">
-                  Block Explorer
-                </Link>{" "}
-                tab.
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </>
-  );
+    );
 };
 
-export default Home;
+export default VotingApp;
